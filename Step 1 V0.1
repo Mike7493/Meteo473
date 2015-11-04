@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 ####################################################################################################
-# ?????
+# Calculates the autocorrelation for temp at worldwide locations for various offset values (tau).
 #
 # Authors: Austin Jordan, Brian Mastro, Michael Spagnolo, & Paige Wagner
 # Emails: amj5454@psu.edu | btm5158@psu.edu | Spagz@psu.edu | paw5214@psu.edu
@@ -19,6 +19,7 @@ import numpy as np
 import netCDF4
 import os
 import matplotlib.pyplot as plt
+from mpl_toolkits.basemap import Basemap
 
 #---------------------------------------------------------------------------------------------------
 # Using the command line arguments, check to make sure the inputs were valid for this program.
@@ -84,8 +85,12 @@ longitude = ncfiledata.variables['longitude'][:]
 # Time needs to be sorted accordingly, data from one day is split into 2 different locations.
 
 time_sorted = np.zeros(len(time))
-time_sorted = time[np.argsort(time)]
+index_sorted = np.argsort(time)
 
+temp = np.zeros((len(time), len(latitude), len(longitude)))
+for j in range(len(time)):
+    temp[j,:,:] = ncfiledata.variables['t2m'][index_sorted[j]][:][:]
+    
 # Observations in the file are taken every 3 hours. Thus, the tau is divided by 3 to ensure we are
 # at the correct times. Thus 24 hours ahead is 8 lines ahead in the time file.
 
@@ -103,20 +108,26 @@ corr = np.zeros((len(tau), len(latitude), len(longitude)))
 
 for i in range(len(latitude)):
     for j in range(len(longitude)):
-        temp = ncfiledata.variables['t2m'][:][i][j]
         for k in range(len(tau)):
             t = tau[k]
-            temp2calcA = np.zeros((len(temp)-t))
-            temp2calcB = np.zeros((len(temp)-t))
-            temp2calcA[:] = temp[0:len(temp)-t]
-            temp2calcB[:] = temp[t:len(temp)]
-            corr[k,i,j] = np.corrcoef(temp2calcA, temp2calcB)[0,1]
+            corr[k,i,j] = np.corrcoef(temp[0:len(temp)-t,i,j], temp[t:len(temp),i,j])[0,1]
 
 #---------------------------------------------------------------------------------------------------
 # Plot this data to an image. One image for each correlation calculated per tau.
 #---------------------------------------------------------------------------------------------------
 
-
+for l in range(len(tau)):
+    name = ('Temperature_Autocorrelation_%s.png' % (l))
+    maphdl = Basemap(projection='merc')
+    x, y = np.meshgrid(longitude, latitude)
+    clevels = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
+    cs = maphdl.contour(x, y, corr[l,:,:], levels=clevels, colors='k', linestyles='solid')
+    cs = maphdl.contourf(x, y, corr[l,:,:], levels=clevels)
+    maphdl.drawcoastlines(linewidth=1.0, color='k')
+    #maphdl.title('Temperature Autocorrelation Through 2014')
+    #maphdl.xlabel('Longitude')
+    #maphdl.ylabel('Latitude')
+    plt.savefig('%s' % (name))
 
 ####################################################################################################
 # DONE with Python script for MileStone 2 Step 1! :*)
