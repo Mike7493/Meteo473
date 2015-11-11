@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 ####################################################################################################
 # Calculates the autocorrelation for temp at worldwide locations for various offset values (tau).
+# It then plots this data on a contour map of the globe.
 #
 # Authors: Austin Jordan, Brian Mastro, Michael Spagnolo, & Paige Wagner
 # Emails: amj5454@psu.edu | btm5158@psu.edu | Spagz@psu.edu | paw5214@psu.edu
@@ -76,19 +77,25 @@ else:
 
 ncfiledata = netCDF4.Dataset(ncfile, 'r')
 
-# In this case, set variables are extracted.
+# In this case, set variables are extracted. For plotting purposes, it is ensured that longitude
+# goes from -180 to 180 instead of 0 to 360.
 
 time = ncfiledata.variables['time'][:]
 latitude = ncfiledata.variables['latitude'][:]
-longitude = ncfiledata.variables['longitude'][:]
+longitude = ncfiledata.variables['longitude'][:]-180
 
-# Time needs to be sorted accordingly, data from one day is split into 2 different locations.
+# Time needs to be sorted accordingly, data from 1 day is split into 2 locations in the file.
 
 time_sorted = np.zeros(len(time))
 index_sorted = np.argsort(time)
 
+# To prevent memory issues, not all of the temp data will be loaded in at once. Calculations will be
+# completed for individual times in a loop.
+
 temp = np.zeros((len(time), len(latitude), len(longitude)))
+
 for j in range(len(time)):
+
     temp[j,:,:] = ncfiledata.variables['t2m'][index_sorted[j]][:][:]
     
 # Observations in the file are taken every 3 hours. Thus, the tau is divided by 3 to ensure we are
@@ -97,37 +104,77 @@ for j in range(len(time)):
 t = 0
 tau = [0, 8, 16, 56, 112, 240]
 
-# To prevent memory issues, not all of the temp data will be loaded in at once. Calculations will be
-# completed for individual latitudes and longitudes in a loop.
-
 #---------------------------------------------------------------------------------------------------
 # Calculate the autocorrelation between temperatures at each location for variaous taus.
 #---------------------------------------------------------------------------------------------------
 
 corr = np.zeros((len(tau), len(latitude), len(longitude)))
 
+# As the program takes ~5 minutes to run, the prints inform the user that its making progress.
+
 for i in range(len(latitude)):
+
+    if i == int(len(latitude)/4):
+
+        print '25% Complete!'
+
+    elif i == int(len(latitude)/2):
+
+        print '50% Complete!'
+
+    elif i == int(len(latitude)*0.75):
+
+        print '75% Complete!'
+
+    # This is where the autocorrelation is calculated. Unshifted temps are compared to shifted ones.
+
     for j in range(len(longitude)):
+
         for k in range(len(tau)):
+
             t = tau[k]
             corr[k,i,j] = np.corrcoef(temp[0:len(temp)-t,i,j], temp[t:len(temp),i,j])[0,1]
+
+print 'Plotting!'
 
 #---------------------------------------------------------------------------------------------------
 # Plot this data to an image. One image for each correlation calculated per tau.
 #---------------------------------------------------------------------------------------------------
 
 for l in range(len(tau)):
-    name = ('Temperature_Autocorrelation_%s.png' % (l))
-    maphdl = Basemap(projection='merc')
-    x, y = np.meshgrid(longitude, latitude)
-    clevels = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
-    cs = maphdl.contour(x, y, corr[l,:,:], levels=clevels, colors='k', linestyles='solid')
+
+    # The map is created using a miller projection with a plotting grid using the lats and longs.
+
+    maphdl = Basemap(projection='mill', llcrnrlon=-180., llcrnrlat=-90., urcrnrlon=180.,
+    urcrnrlat=90., resolution='h')
+    xnpmg, ynpmg = np.meshgrid(longitude, latitude)
+    x, y = maphdl(xnpmg, ynpmg)
+
+    # The correlation values are contoured on the map using a 0.01 interval.
+
+    clevels = np.arange(-1, 1.01, 0.01)
     cs = maphdl.contourf(x, y, corr[l,:,:], levels=clevels)
+
+    # Coastlines, parrallels, and meridians are added and labeled on the map.
+
     maphdl.drawcoastlines(linewidth=1.0, color='k')
-    #maphdl.title('Temperature Autocorrelation Through 2014')
-    #maphdl.xlabel('Longitude')
-    #maphdl.ylabel('Latitude')
+    maphdl.drawparallels(np.arange(-90, 90, 30), color='w', linewidth=1.0, zorder=None,
+    labels=[1,0,0,0])
+    maphdl.drawmeridians(np.arange(-180, 180, 60), color='w', linewidth=1.0, labels=[0,0,0,1])
+
+    # A colorbar is added to show the scale, and is labeled.
+
+    barlevels = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
+    cbar = maphdl.colorbar(location='bottom', pad = 0.5)
+    cbar.set_ticks(barlevels)
+
+    # A title is added and the files is saved as a png image.
+
+    name = ('Temperature_Autocorrelation_%s.png' % (l))
+    plt.title('Temperature Autocorrelation for %s Hour Offset (2014)' % (tau[l]*3))
     plt.savefig('%s' % (name))
+
+print 'Done!'
 
 ####################################################################################################
 # DONE with Python script for MileStone 2 Step 1! :*)
